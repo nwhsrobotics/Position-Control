@@ -1,0 +1,71 @@
+<xml version="1.0">
+<dashboard>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.Label">
+		<location x="2092" y="530"/>
+		<property name="Text" value="B updates PID params"/>
+	</static-widget>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.Label">
+		<location x="2090" y="493"/>
+		<property name="Text" value="A toggles Hold Active"/>
+	</static-widget>
+	<widget field="hold active" type="Boolean" class="edu.wpi.first.smartdashboard.gui.elements.BooleanBox">
+		<location x="2323" y="480"/>
+		<width>170</width>
+		<height>87</height>
+	</widget>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.Label">
+		<location x="2298" y="306"/>
+		<property name="Text" value="Actual"/>
+	</static-widget>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.Label">
+		<location x="2058" y="301"/>
+		<property name="Text" value="Target"/>
+	</static-widget>
+	<widget field="hold target" type="Number" class="edu.wpi.first.smartdashboard.gui.elements.SimpleDial">
+		<location x="2035" y="327"/>
+		<property name="Upper Limit" value="135.0"/>
+		<property name="Lower Limit" value="-135.0"/>
+		<property name="Tick Interval" value="15.0"/>
+	</widget>
+	<widget field="hold current" type="Number" class="edu.wpi.first.smartdashboard.gui.elements.LinePlot">
+		<location x="1958" y="682"/>
+		<width>585</width>
+	</widget>
+	<widget field="hold position" type="Number" class="edu.wpi.first.smartdashboard.gui.elements.SimpleDial">
+		<location x="2274" y="332"/>
+		<property name="Upper Limit" value="135.0"/>
+		<property name="Lower Limit" value="-135.0"/>
+		<property name="Tick Interval" value="15.0"/>
+	</widget>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.RobotPreferences">
+		<location x="1958" y="82"/>
+		<width>580</width>
+	</static-widget>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.CameraServerViewer">
+		<location x="705" y="49"/>
+		<width>1243</width>
+		<height>932</height>
+		<property name="Camera Choice" value=""/>
+	</static-widget>
+	<widget field="Auto mode" type="String Chooser" class="edu.wpi.first.smartdashboard.gui.elements.Chooser">
+		<location x="115" y="4"/>
+	</widget>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.Label">
+		<location x="8" y="3"/>
+		<property name="Text" value="Connection"/>
+	</static-widget>
+	<static-widget class="edu.wpi.first.smartdashboard.gui.elements.ConnectionIndicator">
+		<location x="7" y="28"/>
+		<width>94</width>
+		<height>99</height>
+	</static-widget>
+</dashboard>
+<live-window>
+	<widget field="Ungrouped" type="LW Subsystem" class="edu.wpi.first.smartdashboard.livewindow.elements.LWSubsystem">
+		<location x="24" y="17"/>
+	</widget>
+	<widget field="PosHoldSubsystem" type="LW Subsystem" class="edu.wpi.first.smartdashboard.livewindow.elements.LWSubsystem">
+		<location x="1" y="11"/>
+	</widget>
+</live-window>
+</xml>
