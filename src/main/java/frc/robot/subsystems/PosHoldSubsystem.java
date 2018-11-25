@@ -14,6 +14,7 @@ import com.ctre.phoenix.ErrorCode;
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
+import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 
 import edu.wpi.first.wpilibj.Preferences;
 import edu.wpi.first.wpilibj.command.Subsystem;
@@ -24,30 +25,19 @@ import frc.robot.Robot;
 // Controls one motor in Position mode using PID parameters set through SmartDashboard.
 
 public class PosHoldSubsystem extends Subsystem {
-  // Put methods for controlling this subsystem
-  // here. Call these from Commands.
-
-  // Our motor controller
+  // Some constants
+  // Which CAN Id we'll use if dashboard doesn't specify one.
   static final int DEFAULT_TALON_ID = 1;
-  int m_canId = DEFAULT_TALON_ID;
-  TalonSRX m_talon;
 
-  // Position to hold (in encoder counts)
-  int m_holdPosEnc = 0;
-
-  // PID parameters
-  double m_p = 0.0;
-  double m_i = 0.0;
-  double m_d = 0.0;
-
-  // motor enabled flag
-  private boolean m_enabled = false;
-
-  private double m_maxIntegral;
-  private int m_maxAmps;
-
+  // Encoder counts per revolution
   private static final int ENC_COUNT_PER_REV = 4096;
-  private static final int PID_IDX = 0;  // This example only uses PID parameter set 0.
+
+  // Talon have two sets of PID params, or slots, we use slot 0.
+  private static final int SLOT_IDX = 0;
+
+  // Talons also can run two PID loops, called PRIMARY and AUXILIARY.  For position control
+  // only the PRIMARY loop is used.
+  private static final int PID_PRIMARY = 0;
 
   // On certain talon operations, time out with an error after this period.
   private static final int TALON_TIMEOUT_MS = 100;
@@ -56,40 +46,70 @@ public class PosHoldSubsystem extends Subsystem {
   private static final int DEFAULT_CURR_LIMIT = 2;
   private static final double DEFAULT_MAX_INTEGRAL = 2.0 * DEFAULT_P;
 
-  @Override
-  public void initDefaultCommand() {
-    // Set the default command for a subsystem here.
-    // setDefaultCommand(new PosHoldOff());
-  }
+  // Our motor controller
+  int m_canId = DEFAULT_TALON_ID;
+  WPI_TalonSRX m_talon;
 
+  // motor enabled flag
+  boolean m_enabled = false; 
+  
+  // Position to hold (in encoder counts)
+  int m_holdPosEnc = 0;
+
+  // PID parameters and other Talon settings.
+  double m_p = 0.0;
+  double m_i = 0.0;
+  double m_d = 0.0;
+  double m_maxIntegral = 0.0;
+  int m_maxAmps = 1;
+  
+  // Called from Robot.robotInit to init this subsystem.
   public void init() {
     // get parameters from smartdashboard
-    readDashboardParams();
+    readPreferences();
 
-    m_talon = new TalonSRX(m_canId);
+    m_talon = new WPI_TalonSRX(m_canId);
+
+    // Select which set of PID parameter's we'll use.
+    m_talon.selectProfileSlot(SLOT_IDX, PID_PRIMARY);
 
     // set sensor source and phase
-    m_talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, PID_IDX, TALON_TIMEOUT_MS);
+    m_talon.configSelectedFeedbackSensor(FeedbackDevice.CTRE_MagEncoder_Relative, PID_PRIMARY, TALON_TIMEOUT_MS);
     m_talon.setSensorPhase(false);
 
     configTalon();
   }
 
   @Override
+  public void initDefaultCommand() {
+    // Do nothing.
+  }
+
+  @Override
   public void periodic() {
+    // Read operator input
     double holdPosDeg = Robot.m_oi.readPositionDeg();
 
     // Convert to encoder ticks
     m_holdPosEnc = degToEncoder(holdPosDeg);
 
     // Update motor output 
-    updatePosition();
+    if (!m_enabled) {
+      m_talon.set(ControlMode.Disabled, 0.0);
+    }
+    else {
+      m_talon.set(ControlMode.Position, m_holdPosEnc);
+    }
+
+    // Read Talon position and current
+    double actualPosDeg = encToDeg(m_talon.getSelectedSensorPosition(PID_PRIMARY));
+    double current = m_talon.getOutputCurrent();
 
     // update displayed position and current
     // On smartdashboard, add these indicators.
-    SmartDashboard.putNumber("hold target", holdPosDeg);
-    SmartDashboard.putNumber("hold position", getPositionDeg());
-    SmartDashboard.putNumber("hold current", getCurrent());
+    SmartDashboard.putNumber("target", holdPosDeg);
+    SmartDashboard.putNumber("actual", actualPosDeg);
+    SmartDashboard.putNumber("hold current", current);
     SmartDashboard.putBoolean("hold active", m_enabled);
   }
 
@@ -102,23 +122,13 @@ public class PosHoldSubsystem extends Subsystem {
     System.out.printf("setting enabled: %b\n", enabled);
     m_enabled = enabled;
 
-    if (m_enabled) {
-      // set zero position when motor is enabled
-      setPositionDeg(0.0);
-    }
+    // set zero position when motor is enabled
+    ErrorCode status = m_talon.setSelectedSensorPosition(0, PID_PRIMARY, TALON_TIMEOUT_MS);
+    checkStatus(status, "setSelectedSensorPosition failed.");
 
     // Clear integrator
-    ErrorCode status = m_talon.setIntegralAccumulator(0.0, PID_IDX, TALON_TIMEOUT_MS);
-    if (status != ErrorCode.OK) {
-      // Log error.  (Need better logging)
-      System.out.println("Error clearing integral accumulator.\n");
-    }
-
-    // Make sure all configuration params are up to date.
-    configTalon();
-
-    // Command talon to desired position.
-    updatePosition();
+    status = m_talon.setIntegralAccumulator(0.0, PID_PRIMARY, TALON_TIMEOUT_MS);
+    checkStatus(status, "Error clearing integral accumulator.");
   }
 
   // Is position hold enabled?
@@ -127,9 +137,19 @@ public class PosHoldSubsystem extends Subsystem {
     return m_enabled;
   }
 
-  // Read new PID params from Smartdashboard
+  // Update parameters from Preferences and write to Talon.
+  public void updateParameters() {
+    // Read PID params from Preferences
+    readPreferences();
+
+    // Write updated params to Talon
+    configTalon();
+  }
+
+  // Read new PID params from Preferences
+  // Preferences are stored on the RoboRIO and editable via the Dashboard.
   // This method is called from PosHoldUpdateParams Command, in response to B button.
-  public void readDashboardParams() {
+  private void readPreferences() {
     Preferences prefs;
 
     prefs = Preferences.getInstance();
@@ -148,17 +168,28 @@ public class PosHoldSubsystem extends Subsystem {
     System.out.printf("    holdPos_p: %f\n", m_p);
   }
 
-  // set current position (typically used to zero the position)
-  private void setPositionDeg(double positionDeg) {
-    int posEnc = degToEncoder(positionDeg);
+  // Write new PID params to Talon.
+  private void configTalon() {
+    ErrorCode status;
 
-    ErrorCode status = m_talon.setSelectedSensorPosition(posEnc, PID_IDX, TALON_TIMEOUT_MS);
-    if (status != ErrorCode.OK) {
-      // Log error.  (Need better logging)
-      System.out.println("Error setting sensor position.\n");
-    }
+    // write PID values
+    status = m_talon.config_kP(SLOT_IDX, m_p, TALON_TIMEOUT_MS);
+    checkStatus(status, "Error setting P parameter.");
+
+    status = m_talon.config_kI(SLOT_IDX, m_i, TALON_TIMEOUT_MS);
+    checkStatus(status, "Error setting I parameter.");
+
+    status = m_talon.config_kD(SLOT_IDX, m_d, TALON_TIMEOUT_MS);
+    checkStatus(status, "Error setting P parameter.");
+
+    // set max integrator accumulator
+    m_talon.configMaxIntegralAccumulator(SLOT_IDX, m_maxIntegral, TALON_TIMEOUT_MS);
+
+    // write current limit to talon.
+    m_talon.configContinuousCurrentLimit(m_maxAmps, TALON_TIMEOUT_MS);
+    m_talon.configPeakCurrentLimit(0, TALON_TIMEOUT_MS);
   }
-
+  
   // Convert degrees to encoder units
   private int degToEncoder(double degrees) {
     return (int)(ENC_COUNT_PER_REV * degrees / 360.0); 
@@ -169,52 +200,11 @@ public class PosHoldSubsystem extends Subsystem {
     return (double)(enc * 360.0 / ENC_COUNT_PER_REV);
   }
 
-  // Read encoder position from Talon and return in degrees.
-  private double getPositionDeg() {
-    return encToDeg(m_talon.getSelectedSensorPosition(PID_IDX));
-  }
-
-     // Read current from Talon (in Amps)
-  private double getCurrent() {
-    return m_talon.getOutputCurrent();
-  }
-
-  // Called in Periodic, writes position to Talon
-  private void updatePosition() {
-    if (!m_enabled) {
-      m_talon.set(ControlMode.Disabled, 0.0);
-    }
-    else {
-      m_talon.set(ControlMode.Position, m_holdPosEnc);
-    }
-  }
-
   // Prints error messages when certain calls fail.
   private void checkStatus(ErrorCode status, String msg) {
     if (status != ErrorCode.OK) {
-      System.out.println(msg);
+      System.out.printf("Error: %d, %s\n", status, msg);
     }
   }
 
-  // Write new PID params to Talon.
-  private void configTalon() {
-    ErrorCode status;
-
-    // write PID values
-    status = m_talon.config_kP(PID_IDX, m_p, TALON_TIMEOUT_MS);
-    checkStatus(status, "Error setting P parameter.");
-
-    status = m_talon.config_kI(PID_IDX, m_i, TALON_TIMEOUT_MS);
-    checkStatus(status, "Error setting I parameter.");
-
-    status = m_talon.config_kD(PID_IDX, m_d, TALON_TIMEOUT_MS);
-    checkStatus(status, "Error setting P parameter.");
-
-    // set max integrator accumulator
-    m_talon.configMaxIntegralAccumulator(PID_IDX, m_maxIntegral, TALON_TIMEOUT_MS);
-
-    // write current limit to talon.
-    m_talon.configContinuousCurrentLimit(m_maxAmps, TALON_TIMEOUT_MS);
-    m_talon.configPeakCurrentLimit(0, TALON_TIMEOUT_MS);
-  }
 }

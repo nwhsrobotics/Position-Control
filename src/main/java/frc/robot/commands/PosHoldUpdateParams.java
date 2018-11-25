@@ -11,11 +11,10 @@ import edu.wpi.first.wpilibj.command.Command;
 import frc.robot.Robot;
 
 /**
- * An example command.  You can replace me with your own command.
+ * Position Hold Update Command.  Tells Position Hold subsystem to update params from Preferences.
  */
 public class PosHoldUpdateParams extends Command {
-  public PosHoldUpdateParams
-() {
+  public PosHoldUpdateParams() {
     // Use requires() here to declare subsystem dependencies
     requires(Robot.m_posHold);
   }
@@ -28,12 +27,14 @@ public class PosHoldUpdateParams extends Command {
   // Called repeatedly when this Command is scheduled to run
   @Override
   protected void execute() {
-    Robot.m_posHold.updateParams();
+    // Tell position hold subsystem to re-read dashboard params.
+    Robot.m_posHold.updateParameters();
   }
 
   // Make this return true when this Command no longer needs to run execute()
   @Override
   protected boolean isFinished() {
+    // This command is done after executing just once.
     return true;
   }
 

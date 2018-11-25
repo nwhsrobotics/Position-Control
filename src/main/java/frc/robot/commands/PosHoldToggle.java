@@ -11,7 +11,7 @@ import edu.wpi.first.wpilibj.command.Command;
 import frc.robot.Robot;
 
 /**
- * An example command.  You can replace me with your own command.
+ * Toggle the enable state of the Position Hold Subsystem.
  */
 public class PosHoldToggle extends Command {
   public PosHoldToggle() {
